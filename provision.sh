@@ -92,7 +92,7 @@ file /opt/busybox-arm64/bin/busybox | grep -q "statically linked"
     echo "ld.lld: $(ld.lld --version | head -1)"
     echo "busybox(file): $(file -b /opt/busybox-arm64/bin/busybox)"
     echo
-    dpkg-query -W -f="${binary:Package}\t${Version}\n" $(grep -E -v "^[[:space:]]*(#|$)" /packages.list | xargs) busybox-static:arm64 2>/dev/null || true
+    dpkg-query -W -f="\${binary:Package}\t\${Version}\n" $(grep -E -v "^[[:space:]]*(#|$)" /packages.list | xargs) busybox-static:arm64 2>/dev/null || true
 } > /opt/build-env.txt
 
 # ---- cleanup -------------------------------------------------------------
