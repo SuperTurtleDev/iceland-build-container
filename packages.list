@@ -24,7 +24,11 @@ xz-utils
 rsync
 make
 gcc
+g++
+uuid-dev
 git
 file
 kmod
 dwarves
+# g++, uuid-dev: also required by the bootloader (edk2 BaseTools: VfrCompile
+# links with g++, DevicePath with -luuid from uuid-dev)
