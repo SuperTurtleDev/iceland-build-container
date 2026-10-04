@@ -32,3 +32,8 @@ kmod
 dwarves
 # g++, uuid-dev: also required by the bootloader (edk2 BaseTools: VfrCompile
 # links with g++, DevicePath with -luuid from uuid-dev)
+# dosfstools, mtools, android-sdk-libsparse-utils: bootloader ESP image
+# (FAT32 mkfs.vfat/mcopy, img2simg Android sparse conversion)
+dosfstools
+mtools
+android-sdk-libsparse-utils
