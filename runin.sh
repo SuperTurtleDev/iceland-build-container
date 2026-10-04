@@ -48,6 +48,7 @@ if [ ! -f "${CONTAINER_DATA}/commit" ] || [ "$(cat "${CONTAINER_DATA}/commit")" 
     printf '%s\n' "${CURRENT}" > "${CONTAINER_DATA}/commit"
 fi
 
-exec podman run --rm --rootfs "${CONTAINER_DATA}/rootfs" \
-    ${EXTRA_MOUNTS:-} \
-    "$@"
+# NOTE: podman (pflag) stops parsing options at the first positional
+# argument; with --rootfs that positional is the rootfs path, so all options
+# (the mounts) must come before it.
+exec podman run --rm ${EXTRA_MOUNTS:-} --rootfs "${CONTAINER_DATA}/rootfs" "$@"
