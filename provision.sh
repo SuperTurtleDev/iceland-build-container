@@ -26,6 +26,23 @@ NAME="sm8850-provision-$$"
 command -v podman >/dev/null 2>&1 || { echo "provision.sh: podman not found" >&2; exit 1; }
 [ -f "${HERE}/packages.list" ] || { echo "provision.sh: packages.list missing" >&2; exit 1; }
 
+# The build container must run NATIVE x86_64: kernel host tools (conf,
+# fixdep, ...) built by it are exec'd directly.  A shared host can have the
+# ubuntu:26.04 tag overwritten by a foreign-arch pull; detect that and
+# recover under a local alias, preserving the foreign image under its own
+# alias instead of clobbering it.
+if ! podman run --rm --entrypoint /bin/uname "${BASE}" -m 2>/dev/null | grep -q '^x86_64$'; then
+    echo "[provision] ${BASE} on this host is not amd64 (tag overwritten by a foreign-arch pull?)" >&2
+    podman tag "${BASE}" localhost/ubuntu-26.04-foreign 2>/dev/null || true
+    LOCAL="localhost/iceland-base:ubuntu-26.04-amd64"
+    if ! podman image exists "${LOCAL}"; then
+        id="$(podman pull --quiet --arch amd64 "${BASE}")" || { echo "provision.sh: amd64 pull failed" >&2; exit 1; }
+        podman tag "${id}" "${LOCAL}"
+    fi
+    BASE="${LOCAL}"
+    echo "[provision] using ${BASE}" >&2
+fi
+
 mkdir -p "${DATA}"
 WORK="$(mktemp -d "${DATA}/provision.XXXXXX")"
 cleanup() { podman rm -f -t 0 "${NAME}" >/dev/null 2>&1 || true; rm -rf "${WORK}"; }
