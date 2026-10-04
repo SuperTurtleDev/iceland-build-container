@@ -1,0 +1,30 @@
+# Packages installed into the sm8850 kernel build container.
+#
+# provision.sh installs these in one apt-get run; if the versioned toolchain
+# packages (the -21 suffixes) are not in the archive it retries with the
+# version suffix stripped (clang-21 -> clang, lld-21 -> lld, llvm-21 -> llvm)
+# and records the real choice in /opt/build-env.txt (CONTAINER_DATA/build-env.txt).
+#
+# Toolchain (kernel is built with ARCH=arm64 LLVM=1, clang-21 matches
+# CONFIG_CC_VERSION_TEXT)
+clang-21
+lld-21
+llvm-21
+# Kernel build dependencies
+bc
+bison
+flex
+libssl-dev
+libelf-dev
+python3
+python3-dev
+cpio
+zstd
+xz-utils
+rsync
+make
+gcc
+git
+file
+kmod
+dwarves
