@@ -37,3 +37,6 @@ dwarves
 dosfstools
 mtools
 android-sdk-libsparse-utils
+# net-deploy: cross toolchain for the static ARM64 deploy server
+gcc-aarch64-linux-gnu
+libc6-dev-arm64-cross
