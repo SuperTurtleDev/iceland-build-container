@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # provision.sh -- one-shot provisioning of the kernel build container data.
 #
-# Usage: ./provision.sh <CONTAINER_DATA>
+# Usage: ./provision.sh <CONTAINER_DATA> [amd64|arm64]
 #
 # Hard constraints (do not relax):
 #   * the base image is the stock docker.io/library/ubuntu:26.04 pulled from
@@ -11,32 +11,49 @@
 #     `podman export`, and the tarball is unpacked to CONTAINER_DATA/rootfs
 #     (an existing rootfs from an earlier provision is rebuilt from scratch)
 #
-# Contents: packages.list (with a clang-21 -> clang fallback), an arm64
-# static busybox extracted from the busybox-static:arm64 deb at
-# /opt/busybox-arm64/bin/busybox, and /opt/build-env.txt recording the toolchain
-# choice and every package version.
+# Architectures:
+#   amd64 (default)  the main kernel build container (packages.list); runs
+#                    natively, its kernel host tools are exec'd directly
+#   arm64            the container that builds the native aarch64 binaries
+#                    shipped in the linux-headers and linux-tools packages
+#                    (packages-arm64.list); runs through the host's
+#                    qemu-user binfmt handler, which must be registered with
+#                    the F flag so `podman run --rootfs` works without an
+#                    image-provided emulator
+#
+# Contents: the per-arch packages list (with a clang-21 -> clang fallback),
+# an arm64 static busybox extracted from the busybox-static:arm64 deb at
+# /opt/busybox-arm64/bin/busybox, and /opt/build-env.txt recording the
+# toolchain choice and every package version.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA="${1:?usage: provision.sh <CONTAINER_DATA>}"
+DATA="${1:?usage: provision.sh <CONTAINER_DATA> [amd64|arm64]}"
+ARCH="${2:-amd64}"
+
+case "${ARCH}" in
+    amd64) MACHINE=x86_64;  PKGLIST="packages.list" ;;
+    arm64) MACHINE=aarch64; PKGLIST="packages-arm64.list" ;;
+    *) echo "provision.sh: unsupported arch '${ARCH}' (amd64|arm64)" >&2; exit 1 ;;
+esac
 
 BASE="docker.io/library/ubuntu:26.04"
-NAME="sm8850-provision-$$"
+NAME="sm8850-provision-${ARCH}-$$"
 
 command -v podman >/dev/null 2>&1 || { echo "provision.sh: podman not found" >&2; exit 1; }
-[ -f "${HERE}/packages.list" ] || { echo "provision.sh: packages.list missing" >&2; exit 1; }
+[ -f "${HERE}/${PKGLIST}" ] || { echo "provision.sh: ${PKGLIST} missing" >&2; exit 1; }
 
-# The build container must run NATIVE x86_64: kernel host tools (conf,
-# fixdep, ...) built by it are exec'd directly.  A shared host can have the
-# ubuntu:26.04 tag overwritten by a foreign-arch pull; detect that and
-# recover under a local alias, preserving the foreign image under its own
-# alias instead of clobbering it.
-if ! podman run --rm --entrypoint /bin/uname "${BASE}" -m 2>/dev/null | grep -q '^x86_64$'; then
-    echo "[provision] ${BASE} on this host is not amd64 (tag overwritten by a foreign-arch pull?)" >&2
+# The container must run the requested architecture: binaries built in it
+# are exec'd directly (amd64) or shipped to the device (arm64).  A shared
+# host can have the ubuntu:26.04 tag overwritten by a pull of another arch;
+# detect that and recover under a local alias, preserving the foreign image
+# under its own alias instead of clobbering it.
+if ! podman run --rm --entrypoint /bin/uname "${BASE}" -m 2>/dev/null | grep -q "^${MACHINE}\$"; then
+    echo "[provision] ${BASE} on this host is not ${ARCH} (tag overwritten by a foreign-arch pull?)" >&2
     podman tag "${BASE}" localhost/ubuntu-26.04-foreign 2>/dev/null || true
-    LOCAL="localhost/iceland-base:ubuntu-26.04-amd64"
+    LOCAL="localhost/iceland-base:ubuntu-26.04-${ARCH}"
     if ! podman image exists "${LOCAL}"; then
-        id="$(podman pull --quiet --arch amd64 "${BASE}")" || { echo "provision.sh: amd64 pull failed" >&2; exit 1; }
+        id="$(podman pull --quiet --arch "${ARCH}" "${BASE}")" || { echo "provision.sh: ${ARCH} pull failed" >&2; exit 1; }
         podman tag "${id}" "${LOCAL}"
     fi
     BASE="${LOCAL}"
@@ -48,14 +65,16 @@ WORK="$(mktemp -d "${DATA}/provision.XXXXXX")"
 cleanup() { podman rm -f -t 0 "${NAME}" >/dev/null 2>&1 || true; rm -rf "${WORK}"; }
 trap cleanup EXIT
 
-echo "[provision] running one-shot stock ${BASE} container to install the build environment" >&2
+echo "[provision] running one-shot stock ${BASE} container (${ARCH}) to install the build environment" >&2
 podman run --name "${NAME}" \
-    -v "${HERE}/packages.list:/packages.list:ro" \
+    -v "${HERE}/${PKGLIST}:/packages.list:ro" \
+    -e "ARCH=${ARCH}" -e "MACHINE=${MACHINE}" \
     --entrypoint /bin/bash \
     "${BASE}" -euo pipefail -c '
 # ---- inside the throwaway container -------------------------------------
 DEBIAN_FRONTEND=noninteractive
 export DEBIAN_FRONTEND LC_ALL=C TZ=UTC
+[ "$(uname -m)" = "${MACHINE}" ] || { echo "ERROR: container runs $(uname -m), expected ${MACHINE}" >&2; exit 1; }
 
 apt-get update
 
@@ -83,8 +102,8 @@ done
 # ---- arm64 static busybox for the debug initrd --------------------------
 # extracted, not installed; Ubuntu merged-usr debs unpack the binary to
 # usr/bin/busybox, so locate it and normalize to bin/busybox (a real file,
-# not a symlink)
-dpkg --add-architecture arm64
+# not a symlink).  Foreign-arch registration only on non-arm64 containers.
+[ "$(dpkg --print-architecture)" = arm64 ] || dpkg --add-architecture arm64
 apt-get update
 mkdir -p /opt/busybox-arm64 /tmp/busybox-dl
 cd /tmp/busybox-dl
@@ -102,6 +121,7 @@ file /opt/busybox-arm64/bin/busybox | grep -q "statically linked"
 # ---- record the build environment ---------------------------------------
 {
     echo "base-image: docker.io/library/ubuntu:26.04 (stock, one-shot container)"
+    echo "arch: ${ARCH} ($(uname -m))"
     echo "toolchain: ${TOOLCHAIN}"
     echo "busybox-arm64-deb: $(cd /tmp/busybox-dl && ls busybox-static_*_arm64.deb)"
     echo

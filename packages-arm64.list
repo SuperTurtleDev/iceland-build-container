@@ -1,0 +1,36 @@
+# Packages installed into the arm64 container (qemu-user binfmt) that builds
+# the native aarch64 binaries shipped in the linux-headers (kernel host tools
+# under scripts/) and linux-tools (perf) packages.
+#
+# Same toolchain as packages.list so CONFIG_CC_VERSION_TEXT matches the main
+# build and `make scripts prepare` does not rewrite the .config.
+clang-21
+lld-21
+llvm-21
+# kernel host tools (make scripts prepare): kconfig, dtc, modpost, sign-file
+bc
+bison
+flex
+libssl-dev
+libelf-dev
+make
+gcc
+python3
+git
+file
+# perf (tools/perf): pkg-config + libtraceevent are mandatory; the rest are
+# the optional features whose runtime libraries the linux-tools package then
+# depends on (its Depends is computed from the built binary)
+pkg-config
+libdw-dev
+libtraceevent-dev
+libslang2-dev
+libnuma-dev
+libcap-dev
+libzstd-dev
+liblzma-dev
+zlib1g-dev
+python3-dev
+# build-oot (arm64): module compression + depmod for staging/modroot
+zstd
+kmod
